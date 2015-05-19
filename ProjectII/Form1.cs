@@ -17,23 +17,33 @@ namespace ProjectII
     public partial class WebCrawler : Form
     {
         private GraphClient client;
+        MultithreadedCrawlerForm multithreadedCrawlerForm;
+        DatabaseView databaseViewForm;
+        private Boolean isCrawling;
+
         public WebCrawler(GraphClient client)
         {
             InitializeComponent();
             this.client = client;
+            this.isCrawling = false;
+            this.databaseViewForm = new DatabaseView(client);
+            multithreadedCrawlerForm = new MultithreadedCrawlerForm(client, this, databaseViewForm);
             comboBox1.Items.Add("10");
             comboBox1.Items.Add("100");
             comboBox1.Items.Add("1000");
             comboBox1.Items.Add("10000");
             comboBox1.Items.Add("100000");
+            textBox1.Text = "http://www.redblobgames.com/";
+            textBox2.Text = "458";
+            textBox3.Text = "1200";
+            comboBox1.SelectedIndex = 2;
         }
 
         private void button1_Click(object sender, EventArgs e)
         {
+            this.isCrawling = true;
             SingleThreadedCrawler crawler = new SingleThreadedCrawler(client, Int32.Parse(textBox2.Text), Int32.Parse((String)comboBox1.SelectedItem), Int32.Parse(textBox3.Text));
             crawler.Crawl(textBox1.Text);
-
-            label1.Text = "Something changed";
         }
 
         private void label3_Click(object sender, EventArgs e)
@@ -44,6 +54,18 @@ namespace ProjectII
         private void Form1_Load(object sender, EventArgs e)
         {
 
+        }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            multithreadedCrawlerForm.Show();
+            this.Hide();
+        }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            databaseViewForm.Show();
+            this.Hide();
         }
     }
 }

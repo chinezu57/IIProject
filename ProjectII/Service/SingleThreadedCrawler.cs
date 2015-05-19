@@ -32,7 +32,7 @@ namespace ProjectII.Service
 
         public void Crawl(string startingUrl){
             queue.Enqueue(startingUrl);
-            while (queue.Peek() != null && crawledPages < numberOfPagesToCrawl) {
+            while (queue.Peek() != null && crawledPages < numberOfPagesToCrawl &&  maxLinks > links) {
                 CrawlLink(queue.Dequeue());
                 crawledPages++;
                 Console.WriteLine(crawledPages+" ---> "+links);

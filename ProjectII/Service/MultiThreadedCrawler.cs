@@ -9,97 +9,102 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Abot.Crawler;
+using Abot.Poco;
 
 namespace ProjectII.Service
 {
     class MultiThreadedCrawler
     {
-        private static Int64 links { get; set; }
-        private static string Rstring { get; set; }
-        public static GraphClient client;
-        private static Queue<string> queue = new Queue<string>();
-        private Int64 crawledPages { get; set; }
-        private Int64 numberOfPagesToCrawl { get; set; }
 
-        public MultiThreadedCrawler(GraphClient client, Int64 numberOfPagesToCrawl)
-        {
-            //this.client = client;
-            this.numberOfPagesToCrawl = numberOfPagesToCrawl;
+        private GraphClient client;
+        private int crawledPages;
+
+        public MultiThreadedCrawler(GraphClient client) {
+            this.client = client;
             this.crawledPages = 0;
-            //this.links = 0;
         }
 
-        public void Crawl(string startingUrl)
-        {
-            queue.Enqueue(startingUrl);
-            while (crawledPages < numberOfPagesToCrawl)
-            {
-                if (queue.Count == 0)
-                {
-                    System.Threading.Thread.Sleep(500);
-                }
-                else
-                {
-                    ThreadPool.QueueUserWorkItem(CrawlLink, queue.Dequeue());
-                    //CrawlLink(queue.Dequeue());
-                    crawledPages++;
-                    Console.WriteLine(crawledPages + " ---> " + links);
-                }
-            }
+        public void crawl(string url,  int nrOfThreads, int pagesToCrawl, int crawlTimeout, int crawlDelay) {
+            CrawlConfiguration crawlConfig = new CrawlConfiguration();
+            crawlConfig.CrawlTimeoutSeconds = crawlTimeout;
+            crawlConfig.MaxConcurrentThreads = nrOfThreads;
+            crawlConfig.MaxPagesToCrawl = pagesToCrawl;
+            crawlConfig.UserAgentString = "abot v1.0 https://github.com/sjdirect/abot/";
+            crawlConfig.IsExternalPageCrawlingEnabled = true;
+            crawlConfig.IsExternalPageLinksCrawlingEnabled = true;
+            crawlConfig.MinCrawlDelayPerDomainMilliSeconds = crawlDelay;
+
+
+            PoliteWebCrawler crawler = new PoliteWebCrawler(crawlConfig, null, null, null, null, null, null, null, null);
+
+            crawler.PageCrawlStarting += crawler_ProcessPageCrawlStarting;
+            //crawler.PageCrawlCompleted += crawler_ProcessPageCrawlCompleted;
+            //crawler.PageCrawlDisallowed += crawler_PageCrawlDisallowed;
+            //crawler.PageLinksCrawlDisallowed += crawler_PageLinksCrawlDisallowed;
+
+            CrawlResult result = crawler.Crawl(new Uri(url)); //This is synchronous, it will not go to the next line until the crawl has completed
+
+            if (result.ErrorOccurred)
+                Console.WriteLine("Crawl of {0} completed with error: {1}", result.RootUri.AbsoluteUri, result.ErrorException.Message);
+            else
+                Console.WriteLine("Crawl of {0} completed without error.", result.RootUri.AbsoluteUri);
+
         }
 
-        private static void CrawlLink(object input)
+        void crawler_ProcessPageCrawlStarting(object sender, PageCrawlStartingArgs e)
         {
-            WebRequest myWebRequest;
-            WebResponse myWebResponse;
+            PageToCrawl pageToCrawl = e.PageToCrawl;
+            //Console.WriteLine("About to crawl link {0} which was found on page {1}", pageToCrawl.Uri.AbsoluteUri, pageToCrawl.ParentUri.AbsoluteUri);
+            saveURL(pageToCrawl.ParentUri.AbsoluteUri, pageToCrawl.Uri.AbsoluteUri);
+            crawledPages++;
+            Console.WriteLine(crawledPages);
+        }
 
-            string startUrl = (string)input;
+        void crawler_ProcessPageCrawlCompleted(object sender, PageCrawlCompletedArgs e)
+        {
+            crawledPages++;
+            Console.WriteLine(crawledPages);
+        }
 
-            myWebRequest = WebRequest.Create(startUrl);
-            myWebResponse = myWebRequest.GetResponse();
+        void crawler_PageLinksCrawlDisallowed(object sender, PageLinksCrawlDisallowedArgs e)
+        {
+            CrawledPage crawledPage = e.CrawledPage;
+            Console.WriteLine("Did not crawl the links on page {0} due to {1}", crawledPage.Uri.AbsoluteUri, e.DisallowedReason);
+        }
 
-            Stream streamResponse = myWebResponse.GetResponseStream();
+        void crawler_PageCrawlDisallowed(object sender, PageCrawlDisallowedArgs e)
+        {
+            PageToCrawl pageToCrawl = e.PageToCrawl;
+            Console.WriteLine("Did not crawl page {0} due to {1}", pageToCrawl.Uri.AbsoluteUri, e.DisallowedReason);
+        }
 
-            StreamReader sreader = new StreamReader(streamResponse);
-            Rstring = sreader.ReadToEnd();
-
-            Regex regexLink = new Regex("(?<=<a\\s*?href=(?:'|\"))[^'\"]*?(?=(?:'|\"))");
-            foreach (var match in regexLink.Matches(Rstring))
+        private void saveURL(string startUrl, string url)
+        {
+            try
             {
-                if (!queue.Contains(match.ToString()))
-                {
-                    Uri uriResult;
-                    if (Uri.TryCreate(match.ToString(), UriKind.Absolute, out uriResult) && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
+                var newLink = new Link { Id = 456, Name = url };
+                client.Cypher
+                    .Merge("(link:Link { Name: {name} })")
+                    .OnCreate()
+                    .Set("link = {newLink}")
+                    .WithParams(new
                     {
-                        var newUser = new Link { Id = 456, Name = match.ToString() };
-                        client.Cypher
-                            .Merge("(user:User { Name: {name} })")
-                            .OnCreate()
-                            .Set("user = {newUser}")
-                            .WithParams(new
-                            {
-                                name = newUser.Name,
-                                newUser
-                            })
-                            .ExecuteWithoutResults();
+                        name = newLink.Name,
+                        newLink
+                    })
+                    .ExecuteWithoutResults();
 
-                        //client.Cypher
-                        //.Match("(user1:User)", "(user2:User)")
-                        //.Where((User user1) => user1.Name == startUrl)
-                        //.AndWhere((User user2) => user2.Name == match.ToString())
-                        //.CreateUnique("user1-[:FRIENDS_WITH]->user2")
-                        //.ExecuteWithoutResults();
-
-                        queue.Enqueue(match.ToString());
-                        links++;
-                    }
-                }
+                client.Cypher
+                .Match("(link1:Link)", "(link2:Link)")
+                .Where((Link link1) => link1.Name == startUrl)
+                .AndWhere((Link link2) => link2.Name == url)
+                .CreateUnique("link1-[:KNOWS]->link2")
+                .ExecuteWithoutResults();
             }
-
-            streamResponse.Close();
-            sreader.Close();
-            myWebResponse.Close();
+            catch (Exception e) {
+                Console.WriteLine(e.Data);
+            }
         }
-
     }
 }
